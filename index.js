@@ -101,7 +101,7 @@ function createOrUpdateRecord( name, zone, value ){
 
 if ( process.argv.length < 4 ){
     console.log('invalid or missing parameters:');
-    console.log('node ' + process.argv[1] + ' [entry] <hosted zone> <ip address(s)>' );
+    console.log('node ' + process.argv[1] + ' [entry] <hosted zone> <ip address(s) | http://ip_service >' );
     process.exit(1);
 }
 
@@ -110,9 +110,33 @@ let subdomain = process.argv.length == 5 ? process.argv[i++] : null;
 let zone = process.argv[i++];
 let value = process.argv[i++];
 
-createOrUpdateRecord( subdomain, zone, value )
-    .then( (data) =>{
-        console.log(data);
+let getValue = new Promise( (fulfill) => {
+    fulfill(value);
+});
+
+if ( value.match( /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/) ){
+
+    getValue = new Promise( (fulfill, reject) => {
+        const request = require('request');
+
+        request(value, function (error, response, body) {
+            if (error)
+                return reject(error);
+
+            if (response.statusCode != 200)
+                reject(new Error(response.statusCode));
+
+            fulfill(body.replace('\n','').replace('\r',''));
+        });
+    });
+}
+
+getValue
+    .then( (value)=> {
+        createOrUpdateRecord( subdomain, zone, value )
+            .then( (data) =>{
+                console.log(data);
+            })
     })
     .catch( (err) => {
         console.error(err);
