@@ -35,7 +35,7 @@ function getHostedZone(zone) {
                     if (z.Name === zone)
                         fulfill(z);
                 });
-                reject(new Error('zone not found'));
+                reject(new Error('hosted zone not found'));
             })
             .catch((err) => {
                 reject(err);
@@ -59,43 +59,61 @@ function getZoneRecords(zone){
 
 function createOrUpdateRecord( name, zone, value ){
 
-    getHostedZone(zone)
-        .then( (zone) => {
-            return new Promise( ( fulfill, reject) =>{
+    return new Promise( (fulfill, reject) => {
 
-                let params = {
-                    'HostedZoneId': zone.Id, // our Id from the first call
-                    'ChangeBatch': {
-                        'Changes': [
-                            {
-                                'Action': 'UPSERT',
-                                'ResourceRecordSet': {
-                                    'Name': name + '.' + zone.Name,
-                                    'Type': 'A',
-                                    'TTL': 300,
-                                    'ResourceRecords': [ { 'Value': value } ]
+
+        getHostedZone(zone)
+            .then((zone) => {
+                return new Promise((fulfill, reject) => {
+
+                    let params = {
+                        HostedZoneId: zone.Id, // our Id from the first call
+                        ChangeBatch: {
+                            Changes: [
+                                {
+                                    Action: 'UPSERT',
+                                    ResourceRecordSet: {
+                                        Name: (name ? (name + '.') : '') + zone.Name,
+                                        Type: 'A',
+                                        TTL: 300,
+                                        ResourceRecords: [{Value: value}]
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                };
+                            ]
+                        }
+                    };
 
-                route53.changeResourceRecordSets(params, function(err, data) {
-                    if (err)
-                        return reject(err);
-                    fulfill(data);
-                });
+                    route53.changeResourceRecordSets(params, function (err, data) {
+                        if (err)
+                            return reject(err);
+                        fulfill( data );
+                    });
+                })
             })
-        })
-        .catch( (err) => {
-            console.log(err);
-        });
+            .then( (data) => {
+                fulfill(data)
+            })
+            .catch((err) => {
+                reject(err);
+            });
+    });
 }
 
-if ( process.argv.length < 5 ){
+if ( process.argv.length < 4 ){
     console.log('invalid or missing parameters:');
-    console.log( process.argv[0] + ' ' + process.argv[1] + ' <subdomain> <domain> <ip address(s)>' );
+    console.log('node ' + process.argv[1] + ' [entry] <hosted zone> <ip address(s)>' );
     process.exit(1);
 }
 
-createOrUpdateRecord( process.argv[2], process.argv[3], process.argv[4] );
+let i = 2;
+let subdomain = process.argv.length == 5 ? process.argv[i++] : null;
+let zone = process.argv[i++];
+let value = process.argv[i++];
+
+createOrUpdateRecord( subdomain, zone, value )
+    .then( (data) =>{
+        console.log(data);
+    })
+    .catch( (err) => {
+        console.error(err);
+    });
