@@ -1,9 +1,17 @@
 var AWS = require('aws-sdk');
 
-// AWS Config
-if ( process.env.AWS_ACCESS_KEY_ID ) {
-    AWS.config.update({accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY});
+if (!process.env.AWS_ACCESS_KEY_ID) {
+    console.log( 'Missing environment variable AWS_ACCESS_KEY_ID' );
+    process.exit(1);
 }
+
+if (!process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log( 'Missing environment variable AWS_SECRET_ACCESS_KEY' );
+    process.exit(1);
+}
+
+// AWS Config
+AWS.config.update({accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY});
 
 /// / Set your region for future requests.
 if ( process.env.AWS_REGION ) {
@@ -61,7 +69,6 @@ function createOrUpdateRecord( name, zone, value ){
 
     return new Promise( (fulfill, reject) => {
 
-
         getHostedZone(zone)
             .then((zone) => {
                 return new Promise((fulfill, reject) => {
@@ -99,45 +106,49 @@ function createOrUpdateRecord( name, zone, value ){
     });
 }
 
-if ( process.argv.length < 4 ){
-    console.log('invalid or missing parameters:');
-    console.log('node ' + process.argv[1] + ' [entry] <hosted zone> <ip address(s) | http://ip_service >' );
-    process.exit(1);
-}
+module.exports.start = function(argv){
 
-let i = 2;
-let subdomain = process.argv.length == 5 ? process.argv[i++] : null;
-let zone = process.argv[i++];
-let value = process.argv[i++];
+    if ( argv.length < 4 ){
+        console.log('invalid or missing parameters:');
+        console.log('node run [entry] <hosted zone> <ip address(s) | http://ip_service >' );
+        process.exit(1);
+    }
 
-let getValue = new Promise( (fulfill) => {
-    fulfill(value);
-});
+    let i = 2;
+    let subdomain = argv.length == 5 ? argv[i++] : null;
+    let zone = argv[i++];
+    let value = argv[i++];
 
-if ( value.match( /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/) ){
+    let getValue = new Promise( (fulfill) => {
+        fulfill(value);
+    });
 
-    getValue = new Promise( (fulfill, reject) => {
-        const request = require('request');
+    if ( value.match( /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/) ){
 
-        request(value, function (error, response, body) {
-            if (error)
-                return reject(error);
+        getValue = new Promise( (fulfill, reject) => {
+            const request = require('request');
 
-            if (response.statusCode != 200)
-                reject(new Error(response.statusCode));
+            request(value, function (error, response, body) {
+                if (error)
+                    return reject(error);
 
-            fulfill(body.replace('\n','').replace('\r',''));
+                if (response.statusCode != 200)
+                    reject(new Error(response.statusCode));
+
+                fulfill(body.replace('\n','').replace('\r',''));
+            });
         });
-    });
-}
+    }
 
-getValue
-    .then( (value)=> {
-        createOrUpdateRecord( subdomain, zone, value )
-            .then( (data) =>{
-                console.log(data);
-            })
-    })
-    .catch( (err) => {
-        console.error(err);
-    });
+    getValue
+        .then( (value)=> {
+            console.log( 'setting to value => ' + value );
+            return createOrUpdateRecord( subdomain, zone, value );
+        })
+        .then( (data) =>{
+            console.log(data);
+        })
+        .catch( (err) => {
+            console.error(err);
+        });
+};
